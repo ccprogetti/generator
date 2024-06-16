@@ -12,9 +12,6 @@ database = 'default'
 table = 'cemex'
 new_table = 'cemex_sample'
 
-# Connect to ClickHouse
-##client = clickhouse_connect.get_client( connect_timeout=200, query_limit=0,compress=False, host=host, port=port, user=user, password=password,  database=database)
-client = clickhouse_connect.get_client( query_limit=0,compress='lz4', host=host, port=port, user=user, password=password,  database=database)
 
 # Function to describe the table
 def describe_table_rows(client, table):
@@ -74,26 +71,6 @@ def get_column_statistics(client, table, column, dtype):
         stats = client.query(stats_query)
         return stats
 
-# Retrieve schema
-schema_data = describe_table_rows(client, table)
-schema_columns = describe_table_colums(client, table)
-
-##print( schema_data)
-   
-# Create DataFrame from schema data
-schema_df = pd.DataFrame(schema_data, columns=['name', 'type', '','','','',''])
-print (schema_df);
-
-
-# Generate statistics for each column
-statistics = {}
-for index, row in schema_df.iterrows():
-    column_name = row['name']
-    column_type = row['type']
-    print(f"Processing column: {column_name} ({column_type})")
-    column_stats = get_column_statistics(client, table, column_name, column_type)
-    statistics[column_name] = column_stats.result_rows if column_stats else "No statistics available"
-
 # Function to generate synthetic data based on statistics
 def generate_synthetic_data(statistics, num_rows):
     synthetic_data = {}
@@ -139,14 +116,6 @@ def generate_synthetic_data(statistics, num_rows):
 
     return pd.DataFrame(synthetic_data)
 
-# Number of rows to generate
-num_rows = 1000
-
-# Generate synthetic data
-synthetic_data_df = generate_synthetic_data(statistics, num_rows)
-
-# Display first few rows of synthetic data
-print(synthetic_data_df.head())
 
 # Function to insert data into ClickHouse
 def insert_data(client, table, df):
@@ -157,6 +126,39 @@ def insert_data(client, table, df):
     query = f"INSERT INTO {table} ({columns}) VALUES"
     ##client.execute(query, values)
     client.insert(table, values, columns)
+
+
+
+# Connect to ClickHouse
+##client = clickhouse_connect.get_client( connect_timeout=200, query_limit=0,compress=False, host=host, port=port, user=user, password=password,  database=database)
+client = clickhouse_connect.get_client( query_limit=0,compress='lz4', host=host, port=port, user=user, password=password,  database=database)
+
+# Retrieve schema
+schema_data = describe_table_rows(client, table)
+schema_columns = describe_table_colums(client, table)
+   
+# Create DataFrame from schema data
+schema_df = pd.DataFrame(schema_data, columns=['name', 'type', '','','','',''])
+print (schema_df);
+
+
+# Generate statistics for each column
+statistics = {}
+for index, row in schema_df.iterrows():
+    column_name = row['name']
+    column_type = row['type']
+    print(f"Processing column: {column_name} ({column_type})")
+    column_stats = get_column_statistics(client, table, column_name, column_type)
+    statistics[column_name] = column_stats.result_rows if column_stats else "No statistics available"
+
+# Number of rows to generate
+num_rows = 100000
+
+# Generate synthetic data
+synthetic_data_df = generate_synthetic_data(statistics, num_rows)
+
+# Display first few rows of synthetic data
+print(synthetic_data_df.head())
 
 # Insert synthetic data into ClickHouse table
 insert_data(client, new_table, synthetic_data_df)
