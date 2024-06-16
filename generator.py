@@ -153,15 +153,24 @@ for index, row in schema_df.iterrows():
 
 # Number of rows to generate
 num_rows = 100000
+total_rows = 100000000
+iteration = int(total_rows/num_rows)
 
-# Generate synthetic data
-synthetic_data_df = generate_synthetic_data(statistics, num_rows)
+for i in range( iteration):
+    timestamp_start = datetime.now()
+    # Generate synthetic data
+    synthetic_data_df = generate_synthetic_data(statistics, num_rows)
 
-# Display first few rows of synthetic data
-print(synthetic_data_df.head())
+    # Display first few rows of synthetic data
+    print(synthetic_data_df.head())
 
-# Insert synthetic data into ClickHouse table
-insert_data(client, new_table, synthetic_data_df)
+    # Insert synthetic data into ClickHouse table
+    insert_data(client, new_table, synthetic_data_df)
+
+    timestamp_end = datetime.now()
+    print(f"Elapsed time for row {num_rows}: {timestamp_end - timestamp_start}")
+    print(f"Estimated remaining time: {(total_rows - i*num_rows)/num_rows * (timestamp_end - timestamp_start)}")
+
 
 # Close the client
 client.close()
