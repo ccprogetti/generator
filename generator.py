@@ -26,13 +26,7 @@ def describe_table_rows(client, table):
 def describe_table_colums(client, table):
         schema_query = f"DESCRIBE TABLE {table}"
         schema = client.query(schema_query)
-        ##schema_columns = schema.result_columns
-        ##schema_data = schema.result_rows
-
-        ##schema_columns = schema.result_columns
         schema_columns = [col[0] for col in schema.result_columns]
-
-
         return schema_columns
 
 # Function to calculate statistics for a column
@@ -75,15 +69,15 @@ schema_columns = describe_table_colums(client, table)
 ##print( schema_data)
    
 # Create DataFrame from schema data
-schema_df = pd.DataFrame(schema_data, columns=schema_columns)
+schema_df = pd.DataFrame(schema_data, columns=['name', 'type', '','','','',''])
 print (schema_df);
 
 
 # Generate statistics for each column
 statistics = {}
 for index, row in schema_df.iterrows():
-    column_name = row[0]
-    column_type = row[1]
+    column_name = row['name']
+    column_type = row['type']
     print(f"Processing column: {column_name} ({column_type})")
     column_stats = get_column_statistics(client, table, column_name, column_type)
     statistics[column_name] = column_stats.result_rows if column_stats else "No statistics available"
