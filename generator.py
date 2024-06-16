@@ -10,6 +10,7 @@ user = 'default'
 password = ''
 database = 'default'
 table = 'cemex'
+new_table = 'cemex_sample'
 
 # Connect to ClickHouse
 ##client = clickhouse_connect.get_client( connect_timeout=200, query_limit=0,compress=False, host=host, port=port, user=user, password=password,  database=database)
@@ -31,7 +32,17 @@ def describe_table_colums(client, table):
 
 # Function to calculate statistics for a column
 def get_column_statistics(client, table, column, dtype):
-    if 'Int' in dtype or 'Float' in dtype:
+    
+    if 'Array(Nullable(String))' in dtype:
+        stats_query = f"""
+        SELECT 
+            arrayJoin({column}) AS element, 
+            count(*) AS frequency 
+        FROM {table} 
+        GROUP BY element
+        """
+    
+    elif 'Int' in dtype or 'Float' in dtype:
         stats_query = f"""
         SELECT 
             avg({column}) AS mean, 
@@ -55,6 +66,7 @@ def get_column_statistics(client, table, column, dtype):
             max({column}) AS max 
         FROM {table}
         """
+    
     else:
         stats_query = None
 
@@ -92,7 +104,17 @@ def generate_synthetic_data(statistics, num_rows):
             continue
 
         dtype = schema_df[schema_df['name'] == column]['type'].values[0]
-        if 'String' in dtype or 'Boolean' in dtype:
+
+        if 'Array(Nullable(String))' in dtype:
+            # For Array(String) data
+            elements, frequencies = zip(*stats)
+            probabilities = np.array(frequencies) / sum(frequencies)
+            array_lengths = np.random.randint(1, 10, size=num_rows)  # Random array lengths between 1 and 10
+            synthetic_data[column] = [
+                list(np.random.choice(elements, size=length, p=probabilities))
+                for length in array_lengths
+            ]
+        elif 'String' in dtype or 'Boolean' in dtype:
             # For categorical data or Boolean
             categories, frequencies = zip(*stats)
             probabilities = np.array(frequencies) / sum(frequencies)
@@ -102,7 +124,7 @@ def generate_synthetic_data(statistics, num_rows):
             stats_df = pd.DataFrame(stats, columns=['min', 'max'])
             min_val = pd.to_datetime(stats_df['min'].values[0])
             max_val = pd.to_datetime(stats_df['max'].values[0])
-            synthetic_data[column] = [min_val + (max_val - min_val) * np.random.rand() for _ in range(num_rows)]
+            synthetic_data[column] = [min_val + (max_val - min_val) * np.random.rand() for _ in range(num_rows)]            
         else:
             # For numerical data
             stats_df = pd.DataFrame(stats, columns=['mean', 'stddev', 'min', 'max'])
@@ -128,49 +150,16 @@ print(synthetic_data_df.head())
 
 # Function to insert data into ClickHouse
 def insert_data(client, table, df):
-    columns = ', '.join(df.columns)
+    ##columns = ', '.join(df.columns)
+    
+    columns = [col for col in df.columns]    
     values = [tuple(row) for row in df.to_numpy()]
     query = f"INSERT INTO {table} ({columns}) VALUES"
-    client.execute(query, values)
+    ##client.execute(query, values)
+    client.insert(table, values, columns)
 
 # Insert synthetic data into ClickHouse table
-insert_data(client, table, synthetic_data_df)
+insert_data(client, new_table, synthetic_data_df)
 
 # Close the client
 client.close()
-
-
-
-def generate_synthetic_data(statistics, schema_df, num_rows):
-    synthetic_data = {}
-
-    for column, stats in statistics.items():
-        if isinstance(stats, str):
-            print(f"No statistics available for column: {column}")
-            continue
-
-        dtype = schema_df[schema_df['name'] == column]['type'].values[0]
-        if 'String' in dtype or 'Boolean' in dtype:
-            # For categorical data or Boolean
-            categories, frequencies = zip(*stats)
-            probabilities = np.array(frequencies) / sum(frequencies)
-            synthetic_data[column] = np.random.choice(categories, size=num_rows, p=probabilities)
-        elif 'DateTime64' in dtype:
-            # For DateTime64 data
-            stats_df = pd.DataFrame(stats, columns=['min', 'max'])
-            min_val = pd.to_datetime(stats_df['min'].values[0])
-            max_val = pd.to_datetime(stats_df['max'].values[0])
-            synthetic_data[column] = [min_val + (max_val - min_val) * np.random.rand() for _ in range(num_rows)]
-        else:
-            # For numerical data
-            stats_df = pd.DataFrame(stats, columns=['mean', 'stddev', 'min', 'max'])
-            mean = stats_df['mean'].values[0]
-            stddev = stats_df['stddev'].values[0]
-            min_val = stats_df['min'].values[0]
-            max_val = stats_df['max'].values[0]
-            synthetic_data[column] = np.random.normal(loc=mean, scale=stddev, size=num_rows)
-            synthetic_data[column] = np.clip(synthetic_data[column], min_val, max_val)
-            if 'Int' in dtype:
-                synthetic_data[column] = synthetic_data[column].astype(int)
-
-    return pd.DataFrame(synthetic_data)
